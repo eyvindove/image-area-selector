@@ -19,6 +19,7 @@ const ImageSelectorContainer = styled.div`
 export default function ImageSelector() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasInstance = useRef<fabric.Canvas>();
+  const selectedInstance = useRef<DataType>();
 
   const { viewerSize, dataList, setDataList } = useContext(
     ImageAreaSelectorContext,
@@ -45,6 +46,7 @@ export default function ImageSelector() {
     fabric.Object.prototype.cornerColor = "blue";
     fabric.Object.prototype.cornerStyle = "rect";
     fabric.Object.prototype.cornerSize = 8;
+    fabric.Object.prototype.controls.mtr.visible = false;
     fabric.Object.prototype.controls.deleteControl = new fabric.Control({
       x: 0.5,
       y: -0.5,
@@ -62,7 +64,14 @@ export default function ImageSelector() {
       // canvas?.remove(target);
 
       const prevDataList = getCurrentObjectsList();
-      setDataList([...prevDataList.slice(0, -1)]);
+      const resultDataList = prevDataList.filter(
+        (data: DataType) =>
+          !(
+            data.x === selectedInstance.current?.x &&
+            data.y === selectedInstance.current?.y
+          ),
+      );
+      setDataList(resultDataList);
 
       return false;
     }
@@ -96,8 +105,12 @@ export default function ImageSelector() {
       );
     }
 
-    function detectIsOverlapped(target: DataType, first: boolean = false) {
-      const targetDataList = first ? dataList : dataList.slice(0, -1);
+    function detectIsOverlapped(target: DataType) {
+      const targetDataList = dataList.filter(
+        (data) =>
+          data.x !== selectedInstance.current?.x &&
+          data.y !== selectedInstance.current?.y,
+      );
 
       return targetDataList.find((data) => {
         const compareX =
@@ -112,17 +125,24 @@ export default function ImageSelector() {
     }
 
     canvasInstance.current?.on("mouse:down", (e: IEvent<MouseEvent>) => {
-      console.log("[mouse:down] e:", e);
       const target = {
-        x: Math.ceil(e.absolutePointer?.x ?? 0),
-        y: Math.ceil(e.absolutePointer?.y ?? 0),
+        x: Math.ceil(e.absolutePointer?.x ?? -1),
+        y: Math.ceil(e.absolutePointer?.y ?? -1),
         width: RECT_DEFAULT_SIZE,
         height: RECT_DEFAULT_SIZE,
       };
+      console.log("[mouse:down] e:", e, target);
 
-      if (!e.target) {
+      if (e.target) {
+        selectedInstance.current = {
+          x: Math.ceil(e.target?.left ?? -1),
+          y: Math.ceil(e.target?.top ?? -1),
+          width: e.target?.width ?? 0,
+          height: e.target?.height ?? 0,
+        };
+      } else {
         const isOverflow = detectIsOverflow(target);
-        const isOverlapped = detectIsOverlapped(target, true);
+        const isOverlapped = detectIsOverlapped(target);
         if (!isOverlapped && !isOverflow) {
           const prevDataList = getCurrentObjectsList();
           setDataList([...prevDataList, target]);
@@ -131,7 +151,6 @@ export default function ImageSelector() {
     });
 
     canvasInstance.current?.on("mouse:up", (e: IEvent<MouseEvent>) => {
-      console.log("[mouse:up] e:", e);
       const target = {
         x: Math.ceil(e.target?.aCoords?.tl.x ?? -1),
         y: Math.ceil(e.target?.aCoords?.tl.y ?? -1),
@@ -142,6 +161,7 @@ export default function ImageSelector() {
           (e.target?.aCoords?.bl.y ?? 0) - (e.target?.aCoords?.tl.y ?? 0) - 1,
         ),
       };
+      console.log("[mouse:up] e:", e, target);
 
       const isOverflow = detectIsOverflow(target);
 
@@ -156,7 +176,19 @@ export default function ImageSelector() {
         } else {
           const prevDataList = getCurrentObjectsList();
           if (target.x !== -1 && target.y !== -1) {
-            setDataList([...prevDataList.slice(0, -1), target]);
+            const tempDataList = JSON.parse(JSON.stringify(prevDataList));
+            const resultDataList = tempDataList.map((data: DataType) => {
+              if (
+                data.x === selectedInstance.current?.x &&
+                data.y === selectedInstance.current?.y
+              ) {
+                selectedInstance.current = JSON.parse(JSON.stringify(target));
+
+                return target;
+              }
+              return data;
+            });
+            setDataList(resultDataList);
           }
         }
       }
@@ -173,7 +205,13 @@ export default function ImageSelector() {
       });
 
       canvasInstance.current?.add(rect);
-      canvasInstance.current?.setActiveObject(rect);
+      if (
+        !selectedInstance.current ||
+        (selectedInstance.current?.x === data.x &&
+          selectedInstance.current?.y === data.y)
+      ) {
+        canvasInstance.current?.setActiveObject(rect);
+      }
     });
 
     return () => {
